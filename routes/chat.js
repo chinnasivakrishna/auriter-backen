@@ -1,6 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const Chat = require('../models/Chat');
+const { protect } = require('../middleware/auth');
 const OpenAI = require('openai');
 const { LMNTStreamingClient } = require('../websocket/lmntStreaming');
 
@@ -57,11 +58,14 @@ router.post('/save-recording', async (req, res) => {
 });
 
 // Get chat history
-router.get('/history/:userId', async (req, res) => {
+router.get('/history', protect, async (req, res) => {
   try {
-    const chats = await Chat.find({ userId: req.params.userId })
-      .sort({ updatedAt: -1 })
-      .limit(10);
+    const chats = await Chat.find({ 
+      userId: req.user.id,
+      isVoiceInteraction: false
+    })
+    .sort({ updatedAt: -1 })
+    .limit(10);
     res.json(chats);
   } catch (error) {
     console.error('Error fetching chat history:', error);
@@ -130,105 +134,53 @@ router.post('/synthesize', async (req, res) => {
   }
 });
 
-// Process message and get AI response
-router.post('/message', async (req, res) => {
+// Process regular chat message
+router.post('/message', protect, async (req, res) => {
   try {
-    console.log('=== Processing Chat Message ===');
-    const { userId, message, language = 'en' } = req.body;
-    console.log('Message Details:', { userId, language, messageLength: message.length });
+    const { message, language = 'en', isVoiceInteraction = false } = req.body;
+    const userId = req.user.id;
 
-    let chat = await Chat.findOne({ userId });
+    let chat = await Chat.findOne({ userId, isVoiceInteraction });
     if (!chat) {
-      chat = new Chat({ userId, messages: [] });
-      console.log('Creating new chat for user:', userId);
-    } else {
-      console.log('Found existing chat, messages count:', chat.messages.length);
+      chat = new Chat({ userId, messages: [], isVoiceInteraction });
     }
 
     chat.messages.push({
       content: message,
       isUser: true,
       timestamp: new Date(),
-      language: language
+      language
     });
 
-    // Define system prompts for different languages
-    const systemPrompts = {
-      'en': 'You are a helpful assistant.',
-      'hi': 'आप एक सहायक सहायक हैं।',
-      // Add more language-specific system prompts as needed
-    };
+    // Get AI response using OpenAI
+    const completion = await openai.chat.completions.create({
+      model: "gpt-3.5-turbo",
+      messages: [
+        { role: "system", content: language === 'hi' ? 'आप एक सहायक सहायक हैं।' : 'You are a helpful assistant.' },
+        { role: "user", content: message }
+      ],
+      temperature: 0.6,
+      max_tokens: 500
+    });
 
-    console.log('Starting OpenAI request with model: gpt-3.5-turbo');
-    try {
-      const completion = await openai.chat.completions.create({
-        model: "gpt-3.5-turbo",
-        messages: [
-          { role: "system", content: systemPrompts[language] || systemPrompts['en'] },
-          { role: "user", content: message }
-        ],
-        temperature: 0.6,
-        top_p: 0.7,
-        max_tokens: 500,
-        stream: false
-      });
+    const aiResponse = completion.choices[0].message.content;
 
-      console.log('OpenAI response received');
-      const aiResponse = completion.choices[0].message.content;
+    chat.messages.push({
+      content: aiResponse,
+      isUser: false,
+      timestamp: new Date(),
+      language
+    });
 
-      chat.messages.push({
-        content: aiResponse,
-        isUser: false,
-        timestamp: new Date(),
-        language: language
-      });
+    await chat.save();
 
-      chat.updatedAt = Date.now();
-      await chat.save();
-      console.log('Chat updated and saved to database');
-
-      res.json({
-        message: aiResponse,
-        chatHistory: chat.messages
-      });
-    } catch (openaiError) {
-      console.error('OpenAI API error:', openaiError);
-
-      // Handle rate limiting specifically
-      if (openaiError.status === 429) {
-        return res.status(429).json({
-          success: false,
-          message: 'Chat service temporarily unavailable. Please try again in a few minutes.',
-          retryAfter: 60
-        });
-      }
-
-      // Provide fallback response if API fails
-      const fallbackResponse = "I'm sorry, I'm unable to process your request right now. Please try again later.";
-      chat.messages.push({
-        content: fallbackResponse,
-        isUser: false,
-        timestamp: new Date(),
-        language: language
-      });
-
-      chat.updatedAt = Date.now();
-      await chat.save();
-      console.log('Saved fallback response to chat');
-
-      res.json({
-        message: fallbackResponse,
-        chatHistory: chat.messages,
-        warning: 'Using fallback response due to service limitations'
-      });
-    }
+    res.json({
+      message: aiResponse,
+      chatHistory: chat.messages
+    });
   } catch (error) {
     console.error('Error processing message:', error);
-    res.status(500).json({ 
-      message: error.message,
-      error: 'Failed to process message',
-      details: process.env.NODE_ENV === 'development' ? error.stack : undefined
-    });
+    res.status(500).json({ message: error.message });
   }
 });
 
@@ -254,157 +206,69 @@ const languageConfig = {
   }
 };
 
-// Voice message processing route with improved language handling
-router.post('/voice-message', async (req, res) => {
+// Process voice message
+router.post('/voice-message', protect, async (req, res) => {
   try {
-    console.log('=== Processing Voice Message ===');
-    const { userId, message, language = 'en', isVoiceInteraction = true } = req.body;
-    console.log('Voice Message Details:', { userId, language, messageLength: message.length });
+    const { message, language = 'en' } = req.body;
+    const userId = req.user.id;
 
-    // Initialize LMNT client for speech synthesis
-    if (!process.env.LMNT_API_KEY) {
-      throw new Error('LMNT API key not configured');
-    }
-
-    const lmntClient = new LMNTStreamingClient(process.env.LMNT_API_KEY);
-
-    // Get language-specific configuration
-    const langConfig = languageConfig[language] || languageConfig.en;
-    console.log('Using language config:', langConfig);
-
-    let chat = await Chat.findOne({ userId, isVoiceInteraction });
+    let chat = await Chat.findOne({ 
+      userId, 
+      isVoiceInteraction: true 
+    });
+    
     if (!chat) {
-      chat = new Chat({ userId, messages: [], isVoiceInteraction });
-      console.log('Creating new voice chat for user:', userId);
-    } else {
-      console.log('Found existing voice chat, messages count:', chat.messages.length);
+      chat = new Chat({ 
+        userId, 
+        messages: [], 
+        isVoiceInteraction: true 
+      });
     }
 
-    // Add user message to chat history
     chat.messages.push({
       content: message,
       isUser: true,
       timestamp: new Date(),
-      language: language
+      language
     });
 
-    // Get OpenAI completion with language-specific system prompt
-    console.log('Starting OpenAI request with model: gpt-3.5-turbo');
-    try {
-      const completion = await openai.chat.completions.create({
-        model: "gpt-3.5-turbo",
-        messages: [
-          { 
-            role: "system", 
-            content: langConfig.systemPrompt 
-          },
-          { 
-            role: "user", 
-            content: message 
-          }
-        ],
-        temperature: 0.6,
-        top_p: 0.7,
-        max_tokens: 500,
-        stream: false
-      });
+    // Get AI response using OpenAI
+    const completion = await openai.chat.completions.create({
+      model: "gpt-3.5-turbo",
+      messages: [
+        { role: "system", content: language === 'hi' ? 'आप एक सहायक सहायक हैं।' : 'You are a helpful assistant.' },
+        { role: "user", content: message }
+      ],
+      temperature: 0.6,
+      max_tokens: 500
+    });
 
-      console.log('OpenAI response received');
-      const aiResponse = completion.choices[0].message.content;
+    const aiResponse = completion.choices[0].message.content;
 
-      // Add AI response to chat history
-      chat.messages.push({
-        content: aiResponse,
-        isUser: false,
-        timestamp: new Date(),
-        language: language
-      });
+    chat.messages.push({
+      content: aiResponse,
+      isUser: false,
+      timestamp: new Date(),
+      language
+    });
 
-      chat.updatedAt = Date.now();
-      await chat.save();
-      console.log('Voice chat updated and saved to database');
+    await chat.save();
 
-      // Configure synthesis options based on language
-      const synthesisOptions = {
-        voice: langConfig.defaultVoice,
-        language: language,
-        speed: 1.0,
-        format: 'mp3',
-        sample_rate: 16000
-      };
-
-      console.log('Synthesis options:', synthesisOptions);
-
-      // Get audio data for the response
-      const audioBuffer = await lmntClient.synthesize(aiResponse, synthesisOptions);
-      console.log('Speech synthesis completed, buffer size:', audioBuffer.length);
-
-      res.json({
-        message: aiResponse,
-        chatHistory: chat.messages,
-        audio: audioBuffer.toString('base64'),
-        synthesisOptions: synthesisOptions
-      });
-    } catch (openaiError) {
-      console.error('OpenAI API error:', openaiError);
-
-      // Handle rate limiting specifically
-      if (openaiError.status === 429) {
-        return res.status(429).json({
-          success: false,
-          message: 'Voice chat service temporarily unavailable. Please try again in a few minutes.',
-          retryAfter: 60
-        });
-      }
-
-      // Provide fallback response if API fails
-      const fallbackResponse = "I'm sorry, I'm unable to process your voice request right now. Please try again later.";
-      chat.messages.push({
-        content: fallbackResponse,
-        isUser: false,
-        timestamp: new Date(),
-        language: language
-      });
-
-      chat.updatedAt = Date.now();
-      await chat.save();
-      console.log('Saved fallback response to voice chat');
-
-      // Configure synthesis options based on language
-      const synthesisOptions = {
-        voice: langConfig.defaultVoice,
-        language: language,
-        speed: 1.0,
-        format: 'mp3',
-        sample_rate: 16000
-      };
-
-      // Get audio data for the fallback response
-      const audioBuffer = await lmntClient.synthesize(fallbackResponse, synthesisOptions);
-
-      res.json({
-        message: fallbackResponse,
-        chatHistory: chat.messages,
-        audio: audioBuffer.toString('base64'),
-        synthesisOptions: synthesisOptions,
-        warning: 'Using fallback response due to service limitations'
-      });
-    }
+    res.json({
+      message: aiResponse,
+      chatHistory: chat.messages
+    });
   } catch (error) {
     console.error('Error processing voice message:', error);
-    res.status(500).json({ 
-      message: error.message,
-      error: 'Failed to process voice message',
-      details: process.env.NODE_ENV === 'development' ? error.stack : undefined
-    });
+    res.status(500).json({ message: error.message });
   }
 });
 
 // Get voice chat history
-router.get('/voice-history/:userId', async (req, res) => {
+router.get('/voice-history', protect, async (req, res) => {
   try {
     const chats = await Chat.find({ 
-      userId: req.params.userId,
+      userId: req.user.id,
       isVoiceInteraction: true 
     })
     .sort({ updatedAt: -1 })
