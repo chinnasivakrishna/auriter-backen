@@ -104,9 +104,9 @@ const connectWebSockets = async () => {
     isPlayingRef.current = false;
 
     transcriptWsRef.current = new WebSocket(
-      `ws://localhost:5000/ws/transcribe?language=${language}&model=nova-2`
+      `wss://auriter-backen.onrender.com/ws/transcribe?language=${language}&model=nova-2`
     );
-    speechWsRef.current = new WebSocket(`ws://localhost:5000/ws/speech`);
+    speechWsRef.current = new WebSocket(`wss://auriter-backen.onrender.com/ws/speech`);
 
     await Promise.all([
       new Promise((resolve, reject) => {
