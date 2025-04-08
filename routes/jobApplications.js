@@ -8,7 +8,9 @@ const {
   getAllCompanyApplications,
   searchApplications,
   getApplicationAnalysis,
-  generateApplicationText
+  generateApplicationText,
+  getApplicationById,
+  getApplicationResume
 } = require('../controllers/jobApplicationController');
 const { protect } = require('../middleware/auth');
 
@@ -47,9 +49,13 @@ router.post('/:jobId', protect, submitApplication);
 // Update application status
 router.patch('/:applicationId/status', protect, updateApplicationStatus);
 
-// Generate application content
-// In jobApplications.js
+// Get a single application
+router.get('/:applicationId', protect, getApplicationById);
 
+// Get application analysis
 router.get('/:applicationId/analysis', protect, getApplicationAnalysis);
+
+// Get application resume
+router.get('/:applicationId/resume', protect, getApplicationResume);
 
 module.exports = router;

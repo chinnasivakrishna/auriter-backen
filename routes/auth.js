@@ -110,7 +110,8 @@ router.get('/validate', protect, async (req, res) => {
 
     res.json({
       success: true,
-      role: user.role
+      role: user.role,
+      name: user.name // Add the user's name to the response
     });
   } catch (error) {
     res.status(500).json({
@@ -241,5 +242,7 @@ router.post('/get-token', protect, async (req, res) => {
     });
   }
 });
+
+
 
 module.exports = router;

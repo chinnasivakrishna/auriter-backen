@@ -31,6 +31,7 @@ const profileSchema = new mongoose.Schema({
   languages: [String],
   certifications: [String],
   achievements: [String],
+  resumePath: { type: String }, // Added field to store resume file path
   isComplete: { type: Boolean, default: false },
   createdAt: { type: Date, default: Date.now },
   updatedAt: { type: Date, default: Date.now }

@@ -1,12 +1,8 @@
 const AdminProfile = require('../models/AdminProfile');
 const User = require('../models/User');
 
-// @desc    Get company profile
-// @route   GET /api/company/profile
-// @access  Private (Recruiter only)
 exports.getCompanyProfile = async (req, res) => {
   try {
-    // Check if user is a recruiter
     const user = await User.findById(req.user.id);
     if (user.role !== 'recruiter') {
       return res.status(403).json({
@@ -14,8 +10,6 @@ exports.getCompanyProfile = async (req, res) => {
         message: 'Access denied. Recruiter only route.'
       });
     }
-
-    // Get company profile
     const profile = await AdminProfile.findOne({ user: req.user.id });
     if (!profile) {
       return res.status(404).json({
@@ -33,6 +27,15 @@ exports.getCompanyProfile = async (req, res) => {
         location: profile.location,
         website: profile.website,
         position: profile.position,
+        description: profile.description,
+        contactEmail: profile.contactEmail,
+        contactPhone: profile.contactPhone,
+        logo: profile.logo,
+        socialLinks: {
+          linkedin: profile.socialLinks.linkedin,
+          twitter: profile.socialLinks.twitter,
+          facebook: profile.socialLinks.facebook
+        },
         isComplete: profile.isComplete
       }
     });
@@ -47,12 +50,8 @@ exports.getCompanyProfile = async (req, res) => {
   }
 };
 
-// @desc    Update company profile
-// @route   PUT /api/company/profile
-// @access  Private (Recruiter only)
 exports.updateCompanyProfile = async (req, res) => {
   try {
-    // Check if user is a recruiter
     const user = await User.findById(req.user.id);
     if (user.role !== 'recruiter') {
       return res.status(403).json({
@@ -67,10 +66,13 @@ exports.updateCompanyProfile = async (req, res) => {
       size,
       location,
       website,
-      position
+      position,
+      description,
+      contactEmail,
+      contactPhone,
+      logo,
+      socialLinks
     } = req.body;
-
-    // Find and update profile
     let profile = await AdminProfile.findOne({ user: req.user.id });
     
     if (!profile) {
@@ -79,14 +81,31 @@ exports.updateCompanyProfile = async (req, res) => {
         message: 'Company profile not found'
       });
     }
-
-    // Update fields
+    
     profile.companyName = name || profile.companyName;
     profile.industry = industry || profile.industry;
     profile.companySize = size || profile.companySize;
     profile.location = location || profile.location;
     profile.website = website || profile.website;
     profile.position = position || profile.position;
+    profile.description = description || profile.description;
+    profile.contactEmail = contactEmail || profile.contactEmail;
+    profile.contactPhone = contactPhone || profile.contactPhone;
+    
+    // Update logo if provided
+    if (logo) {
+      profile.logo = logo;
+    }
+    
+    // Update social links if provided
+    if (socialLinks) {
+      profile.socialLinks = {
+        linkedin: socialLinks.linkedin || profile.socialLinks.linkedin,
+        twitter: socialLinks.twitter || profile.socialLinks.twitter,
+        facebook: socialLinks.facebook || profile.socialLinks.facebook
+      };
+    }
+    
     profile.isComplete = true;
     profile.updatedAt = Date.now();
 
@@ -101,6 +120,15 @@ exports.updateCompanyProfile = async (req, res) => {
         location: profile.location,
         website: profile.website,
         position: profile.position,
+        description: profile.description,
+        contactEmail: profile.contactEmail,
+        contactPhone: profile.contactPhone,
+        logo: profile.logo,
+        socialLinks: {
+          linkedin: profile.socialLinks.linkedin,
+          twitter: profile.socialLinks.twitter,
+          facebook: profile.socialLinks.facebook
+        },
         isComplete: profile.isComplete
       }
     });
@@ -115,12 +143,8 @@ exports.updateCompanyProfile = async (req, res) => {
   }
 };
 
-// @desc    Create company profile
-// @route   POST /api/company/profile
-// @access  Private (Recruiter only)
 exports.createCompanyProfile = async (req, res) => {
   try {
-    // Check if user is a recruiter
     const user = await User.findById(req.user.id);
     if (user.role !== 'recruiter') {
       return res.status(403).json({
@@ -128,8 +152,6 @@ exports.createCompanyProfile = async (req, res) => {
         message: 'Access denied. Recruiter only route.'
       });
     }
-
-    // Check if profile already exists
     let profile = await AdminProfile.findOne({ user: req.user.id });
     if (profile) {
       return res.status(400).json({
@@ -144,10 +166,14 @@ exports.createCompanyProfile = async (req, res) => {
       size,
       location,
       website,
-      position
+      position,
+      description,
+      contactEmail,
+      contactPhone,
+      logo,
+      socialLinks
     } = req.body;
-
-    // Create new profile
+    
     profile = new AdminProfile({
       user: req.user.id,
       companyName: name,
@@ -156,6 +182,15 @@ exports.createCompanyProfile = async (req, res) => {
       location,
       website,
       position,
+      description,
+      contactEmail,
+      contactPhone,
+      logo,
+      socialLinks: {
+        linkedin: socialLinks?.linkedin || '',
+        twitter: socialLinks?.twitter || '',
+        facebook: socialLinks?.facebook || ''
+      },
       isComplete: true
     });
 
@@ -170,6 +205,15 @@ exports.createCompanyProfile = async (req, res) => {
         location: profile.location,
         website: profile.website,
         position: profile.position,
+        description: profile.description,
+        contactEmail: profile.contactEmail,
+        contactPhone: profile.contactPhone,
+        logo: profile.logo,
+        socialLinks: {
+          linkedin: profile.socialLinks.linkedin,
+          twitter: profile.socialLinks.twitter,
+          facebook: profile.socialLinks.facebook
+        },
         isComplete: profile.isComplete
       }
     });
@@ -182,4 +226,4 @@ exports.createCompanyProfile = async (req, res) => {
       error: process.env.NODE_ENV === 'development' ? error.message : undefined
     });
   }
-}; 
+};

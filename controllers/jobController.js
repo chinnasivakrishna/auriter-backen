@@ -9,7 +9,7 @@ const openai = new OpenAI({
 
 exports.generateJobDetails = async (req, res) => {
   try {
-    const { title, company, type, location } = req.body;
+    const { title, company, type, location, currency = 'USD' } = req.body;
     
     if (!title || !company || !type || !location) {
       return res.status(400).json({ message: 'Missing required fields' });
@@ -22,6 +22,7 @@ exports.generateJobDetails = async (req, res) => {
       Company: ${company}
       Job Type: ${type}
       Location: ${location}
+      Currency: ${currency}
 
       Please provide the following in a JSON format:
       1. A detailed job description (2-3 paragraphs)
@@ -30,7 +31,7 @@ exports.generateJobDetails = async (req, res) => {
       4. 5-8 required skills as an array of strings
       5. 3-5 benefits as an array of strings
       6. Recommended experience range (min and max in years)
-      7. Suggested salary range (min and max in USD)
+      7. Suggested salary range (min and max in ${currency})
 
       Format the response as a JSON object with these exact keys:
       {
@@ -40,7 +41,7 @@ exports.generateJobDetails = async (req, res) => {
         "skills": ["string"],
         "benefits": ["string"],
         "experience": {"min": number, "max": number},
-        "salary": {"min": number, "max": number, "currency": "USD"}
+        "salary": {"min": number, "max": number, "currency": "${currency}"}
       }
 
       Return only valid JSON without code blocks or explanations.
@@ -48,7 +49,7 @@ exports.generateJobDetails = async (req, res) => {
 
     // Call OpenAI API
     const response = await openai.chat.completions.create({
-      model: "gpt-4", // Use appropriate model
+      model: "gpt-4",
       messages: [
         {
           role: "system",
@@ -61,7 +62,6 @@ exports.generateJobDetails = async (req, res) => {
       ],
       temperature: 0.7,
       max_tokens: 1500
-      // Removed the response_format parameter as it's not supported by this model
     });
 
     // Parse the response to get the generated job details
@@ -92,7 +92,11 @@ exports.generateJobDetails = async (req, res) => {
         skills: generatedContent.skills || [],
         benefits: generatedContent.benefits || [],
         experience: generatedContent.experience || { min: 0, max: 0 },
-        salary: generatedContent.salary || { min: 0, max: 0, currency: 'USD' }
+        salary: {
+          min: generatedContent.salary?.min || 0,
+          max: generatedContent.salary?.max || 0,
+          currency: currency // Use the provided currency
+        }
       };
       
       console.log("Processed content:", generatedContent);
@@ -225,7 +229,13 @@ exports.createJob = async (req, res) => {
   try {
     const jobData = {
       ...req.body,
-      recruiter: req.user.id
+      recruiter: req.user.id,
+      salary: {
+        min: req.body.salary.min,
+        max: req.body.salary.max,
+        currency: req.body.salary.currency || 'USD'
+      },
+      logo: req.body.logo || ''
     };
     const job = new Job(jobData);
     await job.save();
@@ -288,9 +298,25 @@ exports.getRecruiterJobs = async (req, res) => {
 
 exports.updateJob = async (req, res) => {
   try {
+    const updateData = { ...req.body };
+    
+    // Handle salary update properly
+    if (req.body.salary) {
+      updateData.salary = {
+        min: req.body.salary.min,
+        max: req.body.salary.max,
+        currency: req.body.salary.currency || 'USD'
+      };
+    }
+
+    // Handle logo update
+    if (req.body.logo !== undefined) {
+      updateData.logo = req.body.logo;
+    }
+
     const job = await Job.findOneAndUpdate(
       { _id: req.params.id, recruiter: req.user.id },
-      req.body,
+      updateData,
       { new: true, runValidators: true }
     );
 

@@ -30,6 +30,36 @@ const adminProfileSchema = new mongoose.Schema({
     type: String,
     default: ''
   },
+  description: {
+    type: String,
+    default: ''
+  },
+  contactEmail: {
+    type: String,
+    default: ''
+  },
+  contactPhone: {
+    type: String,
+    default: ''
+  },
+  logo: {
+    type: String,
+    default: ''
+  },
+  socialLinks: {
+    linkedin: {
+      type: String,
+      default: ''
+    },
+    twitter: {
+      type: String,
+      default: ''
+    },
+    facebook: {
+      type: String,
+      default: ''
+    }
+  },
   isComplete: {
     type: Boolean,
     default: false

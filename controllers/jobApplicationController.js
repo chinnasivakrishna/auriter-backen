@@ -415,5 +415,61 @@ exports.getApplicationsByJob = async (req, res) => {
   }
 };
 
+exports.getApplicationById = async (req, res) => {
+  try {
+    const application = await JobApplication.findById(req.params.applicationId)
+      .populate('applicant', 'name email')
+      .populate('job', 'title company type');
+
+    if (!application) {
+      return res.status(404).json({ message: 'Application not found' });
+    }
+
+    // Verify the job belongs to the recruiter
+    const job = await Job.findOne({
+      _id: application.job._id,
+      recruiter: req.user.id
+    });
+
+    if (!job) {
+      return res.status(403).json({ message: 'Not authorized to view this application' });
+    }
+
+    res.json(application);
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
+exports.getApplicationResume = async (req, res) => {
+  try {
+    const application = await JobApplication.findById(req.params.applicationId);
+    
+    if (!application) {
+      return res.status(404).json({ message: 'Application not found' });
+    }
+
+    // Verify the job belongs to the recruiter
+    const job = await Job.findOne({
+      _id: application.job,
+      recruiter: req.user.id
+    });
+
+    if (!job) {
+      return res.status(403).json({ message: 'Not authorized to view this resume' });
+    }
+
+    const resumePath = path.join(__dirname, '../uploads/resumes', application.resume);
+    
+    if (!fs.existsSync(resumePath)) {
+      return res.status(404).json({ message: 'Resume file not found' });
+    }
+
+    res.sendFile(resumePath);
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
  
   

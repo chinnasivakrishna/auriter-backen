@@ -8,6 +8,9 @@ const fs = require('fs');
 const { parseResume } = require('../utils/resumeParser');
 const User = require('../models/User');
 
+// Serve static files from uploads directory
+router.use('/uploads', express.static(path.join(__dirname, '../uploads')));
+
 // Ensure uploads directory exists
 const uploadsDir = path.join(__dirname, '../uploads');
 if (!fs.existsSync(uploadsDir)){
@@ -87,11 +90,15 @@ router.post('/resume', protect, async (req, res) => {
       // Parse resume
       const parsedData = await parseResume(uploadPath);
       
+      // Store the relative path to the resume
+      const relativePath = `/uploads/${filename}`;
+      
       const profileData = {
         ...parsedData,
         user: req.user.id,
         isComplete: true,
-        updatedAt: Date.now()
+        updatedAt: Date.now(),
+        resumePath: relativePath // Save the resume path
       };
 
       let profile = await Profile.findOne({ user: req.user.id });
@@ -107,17 +114,14 @@ router.post('/resume', protect, async (req, res) => {
         await profile.save();
       }
 
-      // Clean up uploaded file
-      fs.unlink(uploadPath, (err) => {
-        if (err) console.error('Error deleting file:', err);
-      });
-
+      // No longer deleting the file - keeping it and its path in the database
+      
       res.json({
         success: true,
         profile
       });
     } catch (error) {
-      // Clean up uploaded file on error
+      // Clean up uploaded file only on error
       fs.unlink(uploadPath, (err) => {
         if (err) console.error('Error deleting file:', err);
       });
@@ -252,13 +256,4 @@ router.post('/create', protect, async (req, res) => {
   }
 });
 
-
-
-
 module.exports = router;
-
-
-
-
-
-
