@@ -7,7 +7,12 @@ const {
   updateJob, 
   deleteJob,
   getJobById,
-  generateJobDetails
+  generateJobDetails,
+  toggleJobStatus,
+  getJobStats,
+  duplicateJob,
+  getJobApplicants,
+  bulkUpdateJobs
 } = require('../controllers/jobController');
 const { protect } = require('../middleware/auth');
 
@@ -20,8 +25,23 @@ router.post('/generate-details', protect, generateJobDetails);
 // Get all jobs (with filters)
 router.get('/', getJobs);
 
-// Get recruiter's jobs
+// Get recruiter's jobs with stats
 router.get('/my-jobs', protect, getRecruiterJobs);
+
+// Duplicate a job
+router.post('/:id/duplicate', protect, duplicateJob);
+
+// Get job statistics
+router.get('/:id/stats', protect, getJobStats);
+
+// Get job applicants
+router.get('/:id/applicants', protect, getJobApplicants);
+
+// Bulk update jobs
+router.post('/bulk-update', protect, bulkUpdateJobs);
+
+// Toggle job status (active/hidden/closed/draft)
+router.patch('/:id/status', protect, toggleJobStatus);
 
 // Get job by ID
 router.get('/:id', getJobById);

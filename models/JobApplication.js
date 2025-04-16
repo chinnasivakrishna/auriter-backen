@@ -1,4 +1,3 @@
-// models/JobApplication.js
 const mongoose = require('mongoose');
 
 const jobApplicationSchema = new mongoose.Schema({
@@ -26,6 +25,10 @@ const jobApplicationSchema = new mongoose.Schema({
   },
   additionalNotes: {
     type: String
+  },
+  interview: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Interview'
   },
   interviewRoomId: {
     type: String

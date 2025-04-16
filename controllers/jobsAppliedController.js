@@ -10,6 +10,7 @@ exports.getMyApplications = async (req, res) => {
         path: 'job',
         select: 'title company location type status'
       })
+      .populate('interview') // Add this to populate interview data
       .sort({ createdAt: -1 });
     
     console.log('Applications found:', applications.length);
@@ -39,6 +40,8 @@ exports.getMyApplications = async (req, res) => {
           coverLetter: app.coverLetter || '',
           additionalNotes: app.additionalNotes || '',
           resume: app.resume || '',
+          interview: app.interview || null,
+          interviewRoomId: app.interviewRoomId || null,
           createdAt: app.createdAt,
           updatedAt: app.updatedAt
         };
@@ -58,6 +61,8 @@ exports.getMyApplications = async (req, res) => {
         coverLetter: app.coverLetter || '',
         additionalNotes: app.additionalNotes || '',
         resume: app.resume || '',
+        interview: app.interview || null,
+        interviewRoomId: app.interviewRoomId || null,
         createdAt: app.createdAt,
         updatedAt: app.updatedAt
       };
@@ -93,7 +98,9 @@ exports.getApplicationDetails = async (req, res) => {
     const application = await JobApplication.findOne({
       _id: req.params.id,
       applicant: req.user.id
-    }).populate('job');
+    })
+    .populate('job')
+    .populate('interview'); // Add this to populate interview data
 
     if (!application) {
       console.log("Application not found for ID:", req.params.id);

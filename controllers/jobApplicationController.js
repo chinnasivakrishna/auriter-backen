@@ -7,6 +7,7 @@ const User = require('../models/User');
 const { analyzeApplicationResume } = require('./applicationResumeController');
 const ResumeAnalysis = require('../models/ResumeAnalysis');
 const OpenAI = require('openai');
+const Interview = require('../models/Interview');
 
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY
@@ -24,7 +25,6 @@ exports.generateApplicationText = async (req, res) => {
   try {
     const { jobTitle, company, skills = [], requirements = [], type } = req.body;
 
-    // Validate input with more detailed checks
     if (!jobTitle || !company || !type) {
       console.error('Validation Failed', { 
         jobTitle: !!jobTitle, 
@@ -73,7 +73,6 @@ Please write additional notes that:
 - Are professional, honest, and no more than 150-200 words`
     };
 
-    // Generate text using OpenAI (existing code)
     const response = await openai.chat.completions.create({
       model: "gpt-3.5-turbo",
       messages: [
@@ -110,24 +109,17 @@ Please write additional notes that:
     });
   }
 };
-
-// In jobApplicationController.js
 exports.getAllCompanyApplications = async (req, res) => {
   try {
-    // Get all jobs posted by the recruiter
     const recruiterJobs = await Job.find({ recruiter: req.user.id });
     const jobIds = recruiterJobs.map(job => job._id);
-
-    // Get all applications for these jobs with interviewRoomId
     const applications = await JobApplication.find({
       job: { $in: jobIds }
     })
     .populate('applicant', 'name email')
     .populate('job', 'title company type')
-    .select('applicant job status createdAt interviewRoomId') // Explicitly select interviewRoomId
+    .select('applicant job status createdAt interviewRoomId')
     .sort({ createdAt: -1 });
-
-    // Log applications with their interview room IDs
     applications.forEach(app => {
       console.log('Backend - Application:', {
         id: app._id,
@@ -158,37 +150,26 @@ exports.searchApplications = async (req, res) => {
     const { searchTerm, status, jobType, jobId } = req.query;
     
     let query = {};
-
-    // If jobId is provided, filter by specific job
     if (jobId) {
       query.job = jobId;
     } else {
-      // Get all recruiter's jobs
       const recruiterJobs = await Job.find({ recruiter: req.user.id });
       query.job = { $in: recruiterJobs.map(job => job._id) };
     }
-
-    // Add status filter if provided
     if (status && status !== 'all') {
       query.status = status;
     }
-
-    // Add job type filter if provided
     if (jobType && jobType !== 'all') {
       const jobsOfType = recruiterJobs
         .filter(job => job.type === jobType)
         .map(job => job._id);
       query.job = { $in: jobsOfType };
     }
-
-    // Get applications with interviewRoomId
     let applications = await JobApplication.find(query)
       .populate('applicant', 'name email')
       .populate('job', 'title company type')
-      .select('applicant job status createdAt interviewRoomId') // Explicitly select interviewRoomId
+      .select('applicant job status createdAt interviewRoomId')
       .sort({ createdAt: -1 });
-
-    // Apply search term filter if provided
     if (searchTerm) {
       applications = applications.filter(app => 
         app.applicant.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -218,13 +199,53 @@ exports.searchApplications = async (req, res) => {
 
 exports.getUserApplications = async (req, res) => {
   try {
+    console.log('Getting user applications');
     const applications = await JobApplication.find({ applicant: req.user.id })
-      .populate('job', 'title company status')
-      .sort({ createdAt: -1 });
+      .populate('job', 'title company status location type')
+      .populate({
+        path: 'interview',
+        select: 'date time roomId',
+        model: 'Interview'
+      })
+      .lean();
 
-    res.json(applications);
+    const transformedApplications = await Promise.all(
+      applications.map(async (app) => {
+        if (app.interview) return app;
+        if (app.interviewRoomId) {
+          const interview = await Interview.findOne({ roomId: app.interviewRoomId })
+            .select('date time roomId')
+            .lean();
+          return { ...app, interview };
+        }
+        return app;
+      })
+    );
+
+    const validApplications = transformedApplications.filter(app => app.job);
+
+    const stats = {
+      total: validApplications.length,
+      pending: validApplications.filter(app => app.status === 'pending').length,
+      reviewed: validApplications.filter(app => app.status === 'reviewed').length,
+      shortlisted: validApplications.filter(app => app.status === 'shortlisted').length,
+      accepted: validApplications.filter(app => app.status === 'accepted').length,
+      rejected: validApplications.filter(app => app.status === 'rejected').length
+    };
+    console.log('Valid applications:', validApplications);
+
+    res.json({ 
+      applications: validApplications, 
+      stats,
+      warnings: applications.length !== validApplications.length ? 
+        'Some applications had missing job references' : undefined
+    });
   } catch (error) {
-    res.status(500).json({ message: error.message });
+    console.error('Error in getUserApplications:', error);
+    res.status(500).json({ 
+      message: 'Failed to fetch applications',
+      error: error.message 
+    });
   }
 };
 
@@ -284,11 +305,7 @@ exports.submitApplication = async (req, res) => {
     const fileExt = path.extname(resumeFile.name);
     uploadedFileName = `${req.user.id}-${Date.now()}${fileExt}`;
     const uploadPath = path.join(__dirname, '../uploads/resumes', uploadedFileName);
-
-    // Move the file to uploads directory
     await resumeFile.mv(uploadPath);
-
-    // Create the job application
     const application = new JobApplication({
       job: req.params.jobId,
       applicant: req.user.id,
@@ -298,16 +315,11 @@ exports.submitApplication = async (req, res) => {
     });
 
     await application.save();
-
-    // Create a response object that we'll build up
     const response = {
       success: true,
       application
     };
-
-    // Try to analyze the resume
     try {
-      // Modified to create a mock response object
       const mockRes = {
         json: (data) => data
       };
@@ -318,8 +330,6 @@ exports.submitApplication = async (req, res) => {
           jobId: req.params.jobId
         }
       }, mockRes);
-
-      // If we got analysis data back, store it and add to response
       if (analysisResponse && analysisResponse.data) {
         const analysis = await ResumeAnalysis.create({
           application: application._id,
@@ -332,14 +342,12 @@ exports.submitApplication = async (req, res) => {
       }
     } catch (analysisError) {
       console.error('Resume analysis error:', analysisError);
-      // Add a warning to the response but don't fail the application
       response.warning = 'Resume analysis service temporarily unavailable';
     }
 
     return res.status(201).json(response);
 
   } catch (error) {
-    // Clean up uploaded file if there's an error
     if (uploadedFileName) {
       const uploadPath = path.join(__dirname, '../uploads/resumes', uploadedFileName);
       if (fs.existsSync(uploadPath)) {
@@ -349,9 +357,6 @@ exports.submitApplication = async (req, res) => {
     return res.status(400).json({ message: error.message });
   }
 };
-
-
-// Add new route to get analysis for an application
 exports.getApplicationAnalysis = async (req, res) => {
   try {
     const analysis = await ResumeAnalysis.findOne({
@@ -361,16 +366,12 @@ exports.getApplicationAnalysis = async (req, res) => {
     if (!analysis) {
       return res.status(404).json({ message: 'Analysis not found' });
     }
-
-    // Check if user has permission to view this analysis
     const application = await JobApplication.findById(req.params.applicationId)
       .populate('job');
 
     if (!application) {
       return res.status(404).json({ message: 'Application not found' });
     }
-
-    // Allow access if user is the applicant or the job recruiter
     if (
       application.applicant.toString() !== req.user.id &&
       application.job.recruiter.toString() !== req.user.id
@@ -387,8 +388,6 @@ exports.getApplicationAnalysis = async (req, res) => {
 exports.getApplicationsByJob = async (req, res) => {
   try {
     const { jobId } = req.params;
-    
-    // Verify the job belongs to the recruiter
     const job = await Job.findOne({
       _id: jobId,
       recruiter: req.user.id
@@ -403,7 +402,7 @@ exports.getApplicationsByJob = async (req, res) => {
       .populate('job', 'title company type')
       .sort({ createdAt: -1 });
 
-    console.log('Found applications:', applications); // Add this debug log
+    console.log('Found applications:', applications);
 
     res.json({
       applications,
@@ -424,8 +423,6 @@ exports.getApplicationById = async (req, res) => {
     if (!application) {
       return res.status(404).json({ message: 'Application not found' });
     }
-
-    // Verify the job belongs to the recruiter
     const job = await Job.findOne({
       _id: application.job._id,
       recruiter: req.user.id
@@ -448,8 +445,6 @@ exports.getApplicationResume = async (req, res) => {
     if (!application) {
       return res.status(404).json({ message: 'Application not found' });
     }
-
-    // Verify the job belongs to the recruiter
     const job = await Job.findOne({
       _id: application.job,
       recruiter: req.user.id
@@ -470,6 +465,3 @@ exports.getApplicationResume = async (req, res) => {
     res.status(500).json({ message: error.message });
   }
 };
-
- 
-  

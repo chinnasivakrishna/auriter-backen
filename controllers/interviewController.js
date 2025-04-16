@@ -58,6 +58,12 @@ exports.scheduleInterview = async (req, res) => {
       questions: interviewQuestions
     });
     await interview.save();
+    
+    // Update the JobApplication
+    application.interview = interview._id;
+    application.interviewRoomId = roomId;
+    await application.save();
+    
 
     // Update the JobApplication document with the roomId
     application.interviewRoomId = roomId;

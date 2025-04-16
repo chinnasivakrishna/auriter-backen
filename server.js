@@ -16,6 +16,7 @@ const jobApplicationRoutes = require('./routes/jobApplications');
 const jobsAppliedRoutes = require('./routes/jobsApplied');
 const interviewRoutes = require('./routes/interviewRoutes');
 const companyProfileRoutes = require('./routes/companyProfile');
+const datastoreRoutes = require('./routes/datastore');
 const app = express();
 const server = http.createServer(app);
 const fs = require('fs');
@@ -99,6 +100,7 @@ app.use('/api/applications', jobApplicationRoutes);
 app.use('/api/jobs-applied', jobsAppliedRoutes);
 app.use('/api/interview', interviewRoutes);
 app.use('/api/company/profile', companyProfileRoutes);
+app.use('/api/datastore', datastoreRoutes);
 
 app.use((err, req, res, next) => {
   console.error(err.stack);
