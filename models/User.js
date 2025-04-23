@@ -1,45 +1,54 @@
-// User.js
+// models/User.js (snippet showing how to add isActive field)
 const mongoose = require('mongoose');
 const bcrypt = require('bcryptjs');
 
 const userSchema = new mongoose.Schema({
   name: {
     type: String,
-    required: [true, 'Please provide a name'],
-    trim: true,
+    required: true
   },
   email: {
     type: String,
-    required: [true, 'Please provide an email'],
-    unique: true,
-    lowercase: true,
-    trim: true,
+    required: true,
+    unique: true
   },
   password: {
     type: String,
-    required: [true, 'Please provide a password'],
-    minlength: 6,
-    select: false,
+    required: true
   },
   role: {
     type: String,
-    enum: ['jobSeeker', 'recruiter', 'pendingSelection'],
-    required: true,
-  },
-  googleId: {
-    type: String,
-    unique: true,
-    sparse: true,
+    enum: ['user', 'recruiter', 'admin', 'jobSeeker'],
+    default: 'user'
   },
   company: {
     name: String,
     position: String,
-    website: String,
+    website: String
+  },
+  isActive: {
+    type: Boolean,
+    default: true
   },
   createdAt: {
     type: Date,
-    default: Date.now,
-  },
+    default: Date.now
+  }
+});
+
+// Password hash middleware
+userSchema.pre('save', async function(next) {
+  if (!this.isModified('password')) {
+    return next();
+  }
+  
+  try {
+    const salt = await bcrypt.genSalt(10);
+    this.password = await bcrypt.hash(this.password, salt);
+    next();
+  } catch (error) {
+    next(error);
+  }
 });
 
 userSchema.pre('save', async function(next) {
@@ -52,5 +61,10 @@ userSchema.methods.comparePassword = async function(candidatePassword) {
   return await bcrypt.compare(candidatePassword, this.password);
 };
 
-const User = mongoose.model('User', userSchema);
-module.exports = User;
+
+// Method to compare passwords
+userSchema.methods.matchPassword = async function(enteredPassword) {
+  return await bcrypt.compare(enteredPassword, this.password);
+};
+
+module.exports = mongoose.model('User', userSchema);

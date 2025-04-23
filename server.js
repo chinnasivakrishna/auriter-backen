@@ -17,11 +17,16 @@ const jobsAppliedRoutes = require('./routes/jobsApplied');
 const interviewRoutes = require('./routes/interviewRoutes');
 const companyProfileRoutes = require('./routes/companyProfile');
 const datastoreRoutes = require('./routes/datastore');
+const adminAuthRoutes = require('./routes/adminAuth'); 
+const userManagementRoutes = require('./routes/userManagement');
+const recuriterManagemnet = require('./routes/recruiterManagement');
+const adminRoutes = require('./routes/adminRoutes');
+const shortRoutes = require('./routes/shortRoutes'); // Added shortRoutes
 const app = express();
 const server = http.createServer(app);
 const fs = require('fs');
 const path = require('path');
-const passport = require('passport'); // Make sure to import passport
+const passport = require('passport');
 
 const uploadDir = path.join(__dirname, 'uploads');
 const tempDir = path.join(__dirname, 'temp');
@@ -37,7 +42,7 @@ if (!fs.existsSync(tempDir)) {
 connectDB();
 
 app.use(cors({
-  origin: 'https://auriter-frontend.vercel.app',
+  origin: 'http://localhost:3000',
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization'],
   credentials: true
@@ -101,6 +106,11 @@ app.use('/api/jobs-applied', jobsAppliedRoutes);
 app.use('/api/interview', interviewRoutes);
 app.use('/api/company/profile', companyProfileRoutes);
 app.use('/api/datastore', datastoreRoutes);
+app.use('/api/admin', adminRoutes);
+app.use('/api/admin', adminAuthRoutes); 
+app.use('/api/admin', userManagementRoutes);
+app.use('/api/admin', recuriterManagemnet);
+app.use('/api/shorts', shortRoutes); // Added shorts routes
 
 app.use((err, req, res, next) => {
   console.error(err.stack);
